@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#15803d"><title>PineNotes — Admin</title>
+<link rel="stylesheet" href="style.css"><link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="pine-icon.svg"><link rel="icon" type="image/png" sizes="192x192" href="pine-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+</head><body>
+<header class="nav"><a class="logo" href="index.html"><span class="logo-icon">🌲</span> PineNotes</a>
+<nav><a href="index.html">Home</a><a href="index.html#notes">Notes</a><a href="index.html#dashboard">Dashboard</a><a href="index.html#upload">Publish</a><a href="admin.html" class="active">Admin</a></nav>
+<div class="user-area"><button class="avatar" id="avatarBtn"><span id="avatarLetter">A</span></button><span class="username-label" id="navUsername"></span><button class="btn-ghost small" id="logoutBtn">Logout</button></div>
+</header>
+
+<section id="adminDenied" class="page auth-page" hidden>
+  <div class="auth-card">
+    <h1 class="auth-title">🔒 Admin only</h1>
+    <p class="auth-sub">This page controls the whole app — only admins can enter.</p>
+    <div class="warn-box">To become admin (once, in Supabase):<br><b>SQL Editor → run:</b><br><code>update public.pine_users set role='admin' where username='YOUR_USERNAME';</code><br>Then log out and log in again here.</div>
+    <p class="meta">Not logged in? <a href="login.html">Login →</a> · No account? <a href="register.html">Create account →</a></p>
+    <button class="btn-ghost" onclick="location.href='index.html'">← Back to PineNotes</button>
+  </div>
+</section>
+
+<section id="adminPage" class="page" hidden>
+  <div class="page-wrap wide">
+    <p class="eyebrow">Admin Control</p>
+    <h1 class="page-title">Admin Dashboard 🛡️</h1>
+    <p class="muted center">See every user and every uploaded file. Delete, promote, and control the full app.</p>
+    <div class="stats">
+      <article class="stat"><span>👥</span><strong id="stUsers">0</strong><p>Users</p></article>
+      <article class="stat"><span>📄</span><strong id="stNotes">0</strong><p>Uploaded files</p></article>
+      <article class="stat"><span>💾</span><strong id="stSize">0 MB</strong><p>Storage used</p></article>
+      <article class="stat"><span>⬇️</span><strong id="stDownloads">0</strong><p>Downloads</p></article>
+    </div>
+    <div class="auth-tabs" style="max-width:520px;margin:22px auto">
+      <button class="auth-tab active" id="tabUsers">👥 Users</button>
+      <button class="auth-tab" id="tabFiles">📁 Uploaded Files</button>
+    </div>
+
+    <div id="usersPane">
+      <div class="toolbar"><label>Search users<input id="userSearch" placeholder="Search username or name..."></label><button class="btn-ghost small" id="refreshUsers">↻ Refresh</button><button class="btn-ghost small" id="exportUsers">⬇ Export users</button></div>
+      <div id="usersList"></div>
+    </div>
+
+    <div id="filesPane" hidden>
+      <div class="toolbar"><label>Search files<input id="fileSearch" placeholder="Search title, author, subject..."></label><select id="fileDept"><option value="">All departments</option></select><button class="btn-ghost small" id="refreshFiles">↻ Refresh</button><button class="btn-ghost small" id="exportFiles">⬇ Export files list</button></div>
+      <div id="filesList"></div>
+    </div>
+
+    <article class="panel" style="margin-top:20px;border-color:#fecaca">
+      <h3>⚠️ Danger Zone</h3>
+      <p class="meta">These cannot be undone. Only use when you are sure.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn-ghost danger" id="deleteAllNotes">Delete ALL uploaded files</button>
+        <button class="btn-ghost danger" id="deleteAllUsers">Delete ALL users (except me)</button>
+      </div>
+    </article>
+    <p class="hint center" style="margin-top:14px">Admin tip: role changes in the Users list take effect on next login. Deleting a user also deletes their uploaded files.</p>
+  </div>
+</section>
+
+<div id="toast" class="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+function localUsers(){try{return JSON.parse(localStorage.getItem('pinenotes_users_v1')||'[]')}catch(e){return[]}}
+let sb=null, me=null, allUsers=[], allNotes=[];
+function initSb(){const cfg=window.PINENOTES_SUPABASE;if(cfg&&window.supabase&&!cfg.url.includes('YOUR'))sb=window.supabase.createClient(cfg.url,cfg.anonKey);}
+async function sharedUser(un){if(!sb)return null;const {data}=await sb.from('pine_users').select('*').eq('username',un).maybeSingle();return data||null;}
+async function requireAdmin(){
+  const sess=localStorage.getItem('pinenotes_session_v1');
+  if(!sess){$('#adminDenied').hidden=false;return false;}
+  let u=localUsers().find(x=>x.username===sess);
+  const shared=await sharedUser(sess);
+  const role=(shared&&shared.role)||(u&&u.role)||'';
+  if(role!=='admin'){$('#adminDenied').hidden=false;return false;}
+  me={username:sess,displayName:(shared&&shared.display_name)||(u&&u.displayName)||sess,role:'admin'};
+  $('#avatarLetter').textContent=(me.displayName||sess).charAt(0).toUpperCase();
+  $('#navUsername').textContent=sess;
+  $('#adminDenied').hidden=true;$('#adminPage').hidden=false;
+  return true;
+}
+function sizeMB(n){const m=String(n.size||'').match(/([\d.]+)\s*(KB|MB)/i);if(!m)return 0;return m[2].toUpperCase()==='MB'?parseFloat(m[1]):parseFloat(m[1])/1024;}
+async function loadAll(){
+  initSb();
+  if(sb){
+    const [ur,nr]=await Promise.all([sb.from('pine_users').select('*').order('created_at',{ascending:false}), sb.from('notes').select('*').order('created_at',{ascending:false})]);
+    allUsers=ur.data||[]; allNotes=nr.data||[];
+    // merge local-only users
+    localUsers().forEach(l=>{if(!allUsers.some(u=>u.username===l.username))allUsers.push({username:l.username,display_name:l.displayName,role:l.role||'',created_at:l.created});});
+  } else { allUsers=localUsers().map(u=>({username:u.username,display_name:u.displayName,role:u.role||'',created_at:u.created})); allNotes=[]; }
+  $('#stUsers').textContent=allUsers.length;
+  $('#stNotes').textContent=allNotes.length;
+  $('#stSize').textContent=allNotes.reduce((a,n)=>a+sizeMB(n),0).toFixed(1)+' MB';
+  $('#stDownloads').textContent=allNotes.reduce((a,n)=>a+(n.downloads||0),0);
+  const depts=[...new Set(allNotes.map(n=>n.subject))];
+  $('#fileDept').innerHTML='<option value="">All departments</option>'+depts.map(d=>`<option>${esc(d)}</option>`).join('');
+  renderUsers(); renderFiles();
+}
+function renderUsers(){
+  const q=$('#userSearch').value.trim().toLowerCase();
+  const list=allUsers.filter(u=>!q||u.username.toLowerCase().includes(q)||String(u.display_name||'').toLowerCase().includes(q));
+  $('#usersList').innerHTML=list.length?list.map(u=>`<div class="note-row"><span><b>${esc(u.display_name||u.username)}</b> <small class="meta">@${esc(u.username)} · ${esc(u.role||'student')} · since ${esc(u.created_at||'')}</small></span><span style="display:flex;gap:6px;flex-wrap:wrap">
+    ${u.username!==me.username?`<select data-role="${esc(u.username)}"><option value="">Role…</option><option value="student">Student</option><option value="teacher">Teacher</option><option value="admin">Admin</option></select><button class="report-btn" data-del-user="${esc(u.username)}">Delete user</button>`:'<small class="meta">← you</small>'}
+  </span></div>`).join(''):'<div class="empty"><h3>No users found</h3><p>Users appear here after they create an account.</p></div>';
+}
+function renderFiles(){
+  const q=$('#fileSearch').value.trim().toLowerCase(), dept=$('#fileDept').value;
+  const list=allNotes.filter(n=>(!dept||n.subject===dept)&&(!q||[n.title,n.author,n.subject].join(' ').toLowerCase().includes(q)));
+  $('#filesList').innerHTML=list.length?list.map(n=>`<div class="note-row"><span><b>${esc(n.title)}</b> <small class="meta">${esc(n.subject)} · by ${esc(n.author)} · ${esc(n.filesize||n.size||'')} · ${esc(n.created_at||'')} · ⬇️${n.downloads||0}</small><br><small class="meta">${esc(n.filename||'')}</small></span><span style="display:flex;gap:6px"><button class="mini" data-view="${esc(n.public_url||'')}">View</button><button class="report-btn" data-del-note="${esc(n.id)}">Delete file</button></span></div>`).join(''):'<div class="empty"><h3>No uploaded files</h3><p>Files students publish will appear here.</p></div>';
+}
+$('#tabUsers').addEventListener('click',()=>{$('#tabUsers').classList.add('active');$('#tabFiles').classList.remove('active');$('#usersPane').hidden=false;$('#filesPane').hidden=true;});
+$('#tabFiles').addEventListener('click',()=>{$('#tabFiles').classList.add('active');$('#tabUsers').classList.remove('active');$('#filesPane').hidden=false;$('#usersPane').hidden=true;});
+$('#userSearch').addEventListener('input',renderUsers);
+$('#fileSearch').addEventListener('input',renderFiles);
+$('#fileDept').addEventListener('change',renderFiles);
+$('#refreshUsers').addEventListener('click',loadAll);
+$('#refreshFiles').addEventListener('click',loadAll);
+$('#exportUsers').addEventListener('click',()=>{downloadJSON(allUsers,'pinenotes-users.json');});
+$('#exportFiles').addEventListener('click',()=>{downloadJSON(allNotes,'pinenotes-files.json');});
+function downloadJSON(obj,name){const b=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+document.addEventListener('click',async e=>{
+  const delU=e.target.closest('[data-del-user]'); if(delU){if(!confirm(`Delete user @${delU.dataset.delUser} and all their uploaded files?`))return; const un=delU.dataset.delUser;
+    // delete their files first
+    for(const n of allNotes.filter(x=>x.author===un||x.author===allUsers.find(u=>u.username===un)?.display_name)){await sb.from('notes').delete().eq('id',n.id); if(n.storage_path)await sb.storage.from('notes').remove([n.storage_path]);}
+    await sb.from('pine_users').delete().eq('username',un);
+    localStorage.setItem('pinenotes_users_v1',JSON.stringify(localUsers().filter(u=>u.username!==un)));
+    toast('User deleted'); loadAll(); }
+  const delN=e.target.closest('[data-del-note]'); if(delN){if(!confirm('Delete this uploaded file for everyone?'))return; const n=allNotes.find(x=>String(x.id)===delN.dataset.delNote);
+    await sb.from('notes').delete().eq('id',delN.dataset.delNote); if(n&&n.storage_path)await sb.storage.from('notes').remove([n.storage_path]);
+    toast('File deleted'); loadAll(); }
+  const view=e.target.closest('[data-view]'); if(view&&view.dataset.view)window.open(view.dataset.view,'_blank');
+});
+document.addEventListener('change',async e=>{
+  const sel=e.target.closest('[data-role]'); if(sel&&sel.value){await sb.from('pine_users').update({role:sel.value}).eq('username',sel.dataset.role); toast(`Role updated to ${sel.value}`); loadAll();}
+});
+$('#deleteAllNotes').addEventListener('click',async()=>{if(!confirm('Delete ALL uploaded files for everyone?'))return; for(const n of allNotes){await sb.from('notes').delete().eq('id',n.id); if(n.storage_path)await sb.storage.from('notes').remove([n.storage_path]);} toast('All files deleted'); loadAll();});
+$('#deleteAllUsers').addEventListener('click',async()=>{if(!confirm('Delete ALL users except you?'))return; for(const u of allUsers.filter(u=>u.username!==me.username)){await sb.from('pine_users').delete().eq('username',u.username);} toast('Users deleted'); loadAll();});
+$('#logoutBtn').addEventListener('click',()=>{localStorage.removeItem('pinenotes_session_v1');location.href='login.html';});
+$('#avatarBtn').addEventListener('click',()=>location.href='index.html');
+(async()=>{initSb(); if(await requireAdmin()) loadAll();})();
+</script>
+</body></html>
