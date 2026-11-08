@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#166534"/>
+  <!-- pine tree: 3 layered triangles -->
+  <path d="M256 48 L196 168 L316 168 Z" fill="#22c55e"/>
+  <path d="M256 120 L176 260 L336 260 Z" fill="#16a34a"/>
+  <path d="M256 210 L156 370 L356 370 Z" fill="#15803d"/>
+  <!-- snow / highlight edges -->
+  <path d="M256 48 L276 92 L256 108 L236 92 Z" fill="#ffffff" opacity="0.9"/>
+  <!-- trunk -->
+  <rect x="236" y="370" width="40" height="58" rx="8" fill="#92400e"/>
+  <!-- ground shadow -->
+  <ellipse cx="256" cy="444" rx="110" ry="18" fill="#14532d"/>
+</svg>

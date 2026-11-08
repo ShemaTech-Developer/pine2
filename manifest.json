@@ -1,0 +1,17 @@
+{
+  "name": "PineNotes — Student Notes Library",
+  "short_name": "PineNotes",
+  "description": "Free student notes library. Search and download notes by department.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#15803d",
+  "icons": [
+    { "src": "pine-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "pine-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "pine-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "pine-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
